@@ -2,32 +2,36 @@
 
 ## Group Information
 
-Group Number: 7
+Group Number: [Enter Group Number]
 
 Group Members:
 
-- Adam Cheung
-- Jacqueline Peralta Dominguez
-- Arjun Ynostraza
+- [Member Name]
+- [Member Name]
+- [Member Name]
 
 ## Project Overview
 
 This project provides an automated server-monitoring and incident-response system.
 
-The system monitors a demo service using Prometheus. If the monitored service becomes unavailable, Prometheus detects the failure and sends an alert to Alertmanager. Alertmanager forwards the alert to a Python notification service, which sends a notification to a Webex room.
+The system monitors a website and its PostgreSQL database using Prometheus. If the website becomes unavailable, Prometheus generates a website alert. If the database becomes unavailable, Prometheus detects the database failure and generates database-related alerts.
 
-Jenkins automates the testing, building, and deployment process. Docker Compose runs the project components in separate containers.
+Alertmanager forwards alerts to a Python notification service, which sends notifications to a Webex room.
+
+Jenkins automates testing, container building, and deployment. Docker Compose runs the website, database, monitoring, alerting, and notification components together.
 
 ## Technologies Used
 
 - GitHub
-- Git webhooks or Jenkins polling
 - Jenkins
+- GitHub webhooks or Jenkins polling
 - Docker
 - Docker Compose
 - Python
 - Flask
 - Pytest
+- PostgreSQL
+- PostgreSQL Exporter
 - Prometheus
 - Alertmanager
 - Webex API
@@ -37,25 +41,33 @@ Jenkins automates the testing, building, and deployment process. Docker Compose 
 ```text
 GitHub
    |
-   | Push or polling
+   | Push or Jenkins polling
    v
 Jenkins
    |
-   | Tests and deployment
+   | Unit tests, image builds, and deployment
    v
 Docker Compose
    |
-   +-- Demo target service
+   +-- Website container
+   |       |
+   |       +-- Health endpoint
+   |       +-- Database connection
+   |       +-- Prometheus metrics
+   |
+   +-- PostgreSQL database
+   |
+   +-- PostgreSQL Exporter
    |
    +-- Prometheus
    |
    +-- Alertmanager
    |
-   +-- Python notification service
-            |
-            | Webex API
-            v
-       Webex alert room
+   +-- Python Webex notification service
+                |
+                | Webex API
+                v
+          Webex alert room
 ```
 
 ## Repository Structure
@@ -90,7 +102,7 @@ automated-server-monitoring/
 
 ## Prerequisites
 
-The deployment system requires:
+The deployment host requires:
 
 - Ubuntu Linux
 - Git
@@ -114,9 +126,9 @@ git clone https://github.com/alcheung1008/automated-server-monitoring.git
 cd automated-server-monitoring
 ```
 
-## Configure Webex Credentials
+## Configure Environment Variables
 
-Create the environment file from the example:
+Create the environment file:
 
 ```bash
 cp .env.example .env
@@ -128,11 +140,15 @@ Edit the file:
 nano .env
 ```
 
-Add the Webex bot token and room ID:
+Add the Webex and PostgreSQL values:
 
 ```env
 WEBEX_BOT_TOKEN=your_webex_bot_token
 WEBEX_ROOM_ID=your_webex_room_id
+
+POSTGRES_DB=monitoring
+POSTGRES_USER=monitor
+POSTGRES_PASSWORD=monitor_password
 ```
 
 The `.env` file contains sensitive credentials and must not be committed to GitHub.
@@ -149,12 +165,18 @@ Verify that Git ignores the file:
 git check-ignore -v .env
 ```
 
-## Start the Project Manually
+## Start the Project
 
-Build and start the containers:
+Build and start the complete application:
 
 ```bash
 docker compose up -d --build
+```
+
+To force all containers to be recreated:
+
+```bash
+docker compose up -d --build --force-recreate
 ```
 
 Check the container status:
@@ -166,15 +188,25 @@ docker compose ps
 The following containers should be running:
 
 ```text
+monitoring-database
 demo-target
 notification-service
 prometheus
 alertmanager
+postgres-exporter
 ```
 
 ## Verify the Deployment
 
-Test the demo target service:
+Test the website:
+
+```bash
+curl http://localhost:8000/
+```
+
+The website provides a monitoring dashboard showing the website and database status.
+
+Test the website health endpoint:
 
 ```bash
 curl http://localhost:8000/health
@@ -183,7 +215,25 @@ curl http://localhost:8000/health
 Expected response:
 
 ```json
-{"status":"healthy"}
+{
+  "database": "healthy",
+  "website": "healthy"
+}
+```
+
+Test the database-backed endpoint:
+
+```bash
+curl http://localhost:8000/data
+```
+
+Expected response:
+
+```json
+{
+  "database": "monitoring",
+  "message": "Database connection works"
+}
 ```
 
 Test the notification service:
@@ -195,7 +245,9 @@ curl http://localhost:5000/health
 Expected response:
 
 ```json
-{"status":"healthy"}
+{
+  "status": "healthy"
+}
 ```
 
 Test Prometheus:
@@ -210,76 +262,160 @@ Expected response:
 Prometheus is Ready.
 ```
 
-View the container logs:
+Test the PostgreSQL exporter:
+
+```bash
+curl http://localhost:9187/metrics | grep pg_up
+```
+
+Expected output:
+
+```text
+pg_up 1
+```
+
+View container logs:
 
 ```bash
 docker compose logs -f
 ```
 
-Press `Ctrl+C` to stop viewing the logs. This does not stop the containers.
+Press `Ctrl+C` to stop viewing logs. This does not stop the containers.
 
 ## Access the Services
 
-When running directly on the deployment system, the services are available at:
+When running directly on the deployment host:
 
 | Service | URL |
 |---|---|
-| Demo target | `http://SERVER_IP:8000` |
+| Website dashboard | `http://SERVER_IP:8000` |
+| Website health endpoint | `http://SERVER_IP:8000/health` |
+| Database test endpoint | `http://SERVER_IP:8000/data` |
+| Website metrics | `http://SERVER_IP:8000/metrics` |
 | Notification service | `http://SERVER_IP:5000/health` |
 | Prometheus | `http://SERVER_IP:9090` |
 | Alertmanager | `http://SERVER_IP:9093` |
+| PostgreSQL exporter | `http://SERVER_IP:9187/metrics` |
 | Jenkins | `http://SERVER_IP:8080` |
 
-When using an SSH tunnel, use:
+If the project is running inside a NAT-configured virtual machine, use port forwarding or an SSH tunnel.
+
+When using the SSH tunnel, use:
 
 ```text
-Jenkins: http://localhost:8080
+Website dashboard: http://localhost:8000
 Prometheus: http://localhost:9090
 Alertmanager: http://localhost:9093
-Demo target: http://localhost:8000
-Notification service: http://localhost:5000/health
+Jenkins: http://localhost:8080
 ```
 
-## Verify Prometheus Monitoring
+## Prometheus Monitoring
 
-Open Prometheus in a browser:
+Open Prometheus:
 
 ```text
 http://localhost:9090
 ```
 
-Select:
+Open the targets page:
 
 ```text
-Status → Target health
+http://localhost:9090/targets
 ```
 
-The `demo-target` should show a status of `UP`.
+The following targets should show as `UP`:
 
-The target can also be checked through the Prometheus API:
+```text
+demo-target
+database
+```
+
+The `database` target is backed by the PostgreSQL exporter.
+
+The exporter exposes PostgreSQL metrics, including:
+
+```text
+pg_up
+```
+
+The metrics have two different meanings:
+
+```text
+up{job="database"}
+```
+
+This indicates whether Prometheus can reach the database metrics endpoint.
+
+```text
+pg_up{job="database"}
+```
+
+This indicates whether the PostgreSQL exporter can connect to the actual PostgreSQL database.
+
+Query the website target:
 
 ```bash
 curl -sG http://localhost:9090/api/v1/query \
   --data-urlencode 'query=up{job="demo-target"}' | jq
 ```
 
-A healthy target should return a value of `1`.
+Query the database target:
 
-## Test the Alert Workflow
+```bash
+curl -sG http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=up{job="database"}' | jq
+```
 
-Stop the monitored demo service:
+Query the actual PostgreSQL health:
+
+```bash
+curl -sG http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=pg_up{job="database"}' | jq
+```
+
+A healthy PostgreSQL database should return a value of:
+
+```text
+1
+```
+
+## Prometheus Alerts
+
+The project includes alerts for:
+
+- Website failure
+- Database exporter failure
+- PostgreSQL database failure
+- Website-to-database connection failure
+
+The alert names are:
+
+```text
+WebsiteDown
+DatabaseExporterDown
+DatabaseDown
+WebsiteDatabaseConnectionFailed
+```
+
+## Simulating Website Downtime
+
+Stop only the website container:
 
 ```bash
 docker compose stop demo-target
 ```
 
-Prometheus checks the service every few seconds. After the configured alert period, it should detect that the service is unavailable.
+Wait approximately 30 seconds for Prometheus to detect the failure.
 
-Check the current alerts:
+Check the active alerts:
 
 ```bash
 curl -s http://localhost:9090/api/v1/alerts | jq
 ```
+
+A `WebsiteDown` alert should appear.
+
+A Webex notification should also be sent identifying the website failure.
 
 Check the notification service logs:
 
@@ -287,24 +423,115 @@ Check the notification service logs:
 docker compose logs notification-service
 ```
 
-A Webex notification should be sent to the configured room.
-
-The alert should contain information similar to:
-
-```text
-Prometheus Alert: DemoTargetDown
-Status: FIRING
-Severity: critical
-Summary: Demo target service is unavailable
-```
-
-Restore the monitored service:
+Restore the website:
 
 ```bash
 docker compose start demo-target
 ```
 
-After Prometheus detects the recovery, Alertmanager should send a resolved notification to Webex.
+Wait for Prometheus and Alertmanager to detect the recovery. A resolved Webex notification should be sent.
+
+## Simulating Database Downtime
+
+Start the complete project first:
+
+```bash
+docker compose up -d
+```
+
+Stop only the PostgreSQL database:
+
+```bash
+docker compose stop database
+```
+
+The website container should remain running, but it should no longer be able to connect to PostgreSQL.
+
+Check the website health endpoint:
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{
+  "database": "unhealthy",
+  "website": "healthy"
+}
+```
+
+The HTTP response should have status code `503`.
+
+Check the website database metric:
+
+```bash
+curl -s http://localhost:8000/metrics | grep website_database_connection_up
+```
+
+Expected result:
+
+```text
+website_database_connection_up 0.0
+```
+
+Check the actual PostgreSQL metric:
+
+```bash
+curl -sG http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=pg_up{job="database"}' | jq
+```
+
+The value should be:
+
+```text
+0
+```
+
+Wait approximately 30 seconds, then check Prometheus:
+
+```bash
+curl -s http://localhost:9090/api/v1/alerts | jq
+```
+
+The following alerts should appear:
+
+```text
+DatabaseDown
+WebsiteDatabaseConnectionFailed
+```
+
+Webex notifications should identify the database-related failure.
+
+Restore PostgreSQL:
+
+```bash
+docker compose start database
+```
+
+Verify the database recovered:
+
+```bash
+docker compose ps
+```
+
+Then test the website:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{
+  "database": "healthy",
+  "website": "healthy"
+}
+```
+
+A resolved Webex notification should eventually be sent.
 
 ## Run Unit Tests
 
@@ -313,8 +540,6 @@ Run the notification service tests:
 ```bash
 docker compose run --rm --no-deps notification-service pytest -q
 ```
-
-The tests should complete successfully.
 
 Expected result:
 
@@ -334,13 +559,11 @@ The Jenkins pipeline performs the following actions:
 4. Builds the Docker images.
 5. Runs the Python unit tests.
 6. Starts the Docker Compose services.
-7. Runs smoke tests against the services.
+7. Runs smoke tests.
 
 ## Jenkins Credentials
 
-Jenkins requires two secret text credentials.
-
-Create these credentials under:
+Create two Jenkins secret text credentials under:
 
 ```text
 Manage Jenkins
@@ -365,7 +588,7 @@ ID: webex-room-id
 Secret: your Webex room ID
 ```
 
-The credential IDs must match the IDs used in the `Jenkinsfile`.
+The credential IDs must match the IDs used by the `Jenkinsfile`.
 
 ## Jenkins Pipeline Job
 
@@ -421,7 +644,7 @@ H/5 * * * *
 
 This checks the GitHub repository approximately every five minutes for changes.
 
-A manual build can also be started with:
+You can also manually start a build using:
 
 ```text
 Build Now
@@ -441,13 +664,15 @@ View all logs:
 docker compose logs -f
 ```
 
-View logs for one service:
+View logs for a specific service:
 
 ```bash
+docker compose logs -f database
+docker compose logs -f demo-target
+docker compose logs -f postgres-exporter
 docker compose logs -f prometheus
 docker compose logs -f alertmanager
 docker compose logs -f notification-service
-docker compose logs -f demo-target
 ```
 
 Restart the services:
@@ -474,6 +699,18 @@ Stop and remove the containers:
 docker compose down
 ```
 
+Stop and remove the containers while preserving database data:
+
+```bash
+docker compose down
+```
+
+Do not use the following command unless you intentionally want to delete the PostgreSQL data volume:
+
+```bash
+docker compose down -v
+```
+
 Rebuild the project:
 
 ```bash
@@ -483,32 +720,91 @@ docker compose up -d --build
 
 ## Troubleshooting
 
-### Containers are not running
+### The website container is not running
 
-Check the container status:
-
-```bash
-docker compose ps
-```
-
-Check the logs:
+Check its status:
 
 ```bash
-docker compose logs
+docker compose ps demo-target
 ```
 
-### Prometheus cannot scrape the demo target
-
-Check the Prometheus target status:
-
-```text
-http://localhost:9090/targets
-```
-
-Check the demo target directly:
+View its logs:
 
 ```bash
-curl http://localhost:8000/metrics
+docker compose logs demo-target
+```
+
+Rebuild the website image:
+
+```bash
+docker compose build --no-cache demo-target
+docker compose up -d demo-target
+```
+
+### PostgreSQL is not running
+
+Check the database status:
+
+```bash
+docker compose ps database
+```
+
+View the database logs:
+
+```bash
+docker compose logs database
+```
+
+Check whether the database is healthy:
+
+```bash
+docker inspect monitoring-database --format='{{json .State.Health}}' | jq
+```
+
+### The PostgreSQL exporter is not working
+
+Check the exporter status:
+
+```bash
+docker compose ps postgres-exporter
+```
+
+View its logs:
+
+```bash
+docker compose logs postgres-exporter
+```
+
+Test its metrics endpoint:
+
+```bash
+curl http://localhost:9187/metrics | grep pg_up
+```
+
+### The website cannot connect to PostgreSQL
+
+Check the website health endpoint:
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+Check the website logs:
+
+```bash
+docker compose logs demo-target
+```
+
+Verify that the database container is running:
+
+```bash
+docker compose ps database
+```
+
+Verify the database connection metric:
+
+```bash
+curl -s http://localhost:8000/metrics | grep website_database_connection_up
 ```
 
 ### Webex notifications are not received
@@ -519,7 +815,7 @@ Check the notification service logs:
 docker compose logs notification-service
 ```
 
-Verify that the `.env` file contains:
+Verify that `.env` contains:
 
 ```env
 WEBEX_BOT_TOKEN=your_webex_bot_token
@@ -530,7 +826,7 @@ Verify that the Webex bot is a member of the alert room.
 
 ### Jenkins cannot run Docker commands
 
-Check that the Jenkins user belongs to the Docker group:
+Check whether the Jenkins user belongs to the Docker group:
 
 ```bash
 groups jenkins
@@ -559,7 +855,7 @@ docker compose build --no-cache notification-service
 
 ## Project Outcome
 
-The completed system demonstrates an automated DevOps workflow:
+The completed system demonstrates this automated workflow:
 
 ```text
 GitHub code change
@@ -570,9 +866,11 @@ Unit tests
         ↓
 Docker deployment
         ↓
-Prometheus monitoring
+Website and database monitoring
         ↓
-Alertmanager alert processing
+Prometheus alert rules
+        ↓
+Alertmanager
         ↓
 Python notification service
         ↓
