@@ -1,0 +1,15 @@
+global: {}
+
+route:
+  group_by:
+    - alertname
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 1h
+  receiver: webex-notification
+
+receivers:
+  - name: webex-notification
+    webhook_configs:
+      - url: http://notification-service:5000/alert
+        send_resolved: true

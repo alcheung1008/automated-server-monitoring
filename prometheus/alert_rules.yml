@@ -1,0 +1,11 @@
+groups:
+  - name: demo-target-alerts
+    rules:
+      - alert: DemoTargetDown
+        expr: up{job="demo-target"} == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Demo target service is unavailable
+          description: Prometheus cannot scrape the demo target service.
