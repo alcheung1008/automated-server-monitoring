@@ -26,3 +26,5 @@ Create a `.env` file containing:
 ```env
 WEBEX_BOT_TOKEN=your_token
 WEBEX_ROOM_ID=your_room_id
+
+Jenkins polling test
