@@ -1,11 +1,42 @@
 groups:
-  - name: demo-target-alerts
+  - name: application-alerts
     rules:
-      - alert: DemoTargetDown
+      - alert: WebsiteDown
         expr: up{job="demo-target"} == 0
         for: 15s
         labels:
           severity: critical
+          service: website
         annotations:
-          summary: Demo target service is unavailable
-          description: Prometheus cannot scrape the demo target service.
+          summary: Website is unavailable
+          description: Prometheus cannot scrape the website container.
+
+      - alert: DatabaseExporterDown
+        expr: up{job="database"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          service: database-monitoring
+        annotations:
+          summary: Database exporter is unavailable
+          description: Prometheus cannot scrape the PostgreSQL exporter.
+
+      - alert: DatabaseDown
+        expr: pg_up{job="database"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: PostgreSQL database is unavailable
+          description: The PostgreSQL exporter cannot connect to the database.
+
+      - alert: WebsiteDatabaseConnectionFailed
+        expr: website_database_connection_up{job="demo-target"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          service: website-database-connection
+        annotations:
+          summary: Website cannot connect to the database
+          description: The website is running but its database connection failed.
