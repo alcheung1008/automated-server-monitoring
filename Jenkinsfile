@@ -39,6 +39,12 @@ pipeline {
             }
         }
 
+	stage('Build Images') {
+    	    steps {
+        	sh 'docker compose build'
+            }
+	}
+
         stage('Run Unit Tests') {
             steps {
                 sh '''
