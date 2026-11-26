@@ -2,13 +2,13 @@
 
 ## Group Information
 
-Group Number: [Enter Group Number]
+Group Number: 7
 
 Group Members:
 
-- [Member Name]
-- [Member Name]
-- [Member Name]
+- Adam Cheung
+- Jacqueline Peralta Dominguez
+- Arjun Ynostraza
 
 ## Project Overview
 
